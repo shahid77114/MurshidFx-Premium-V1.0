@@ -1,0 +1,1727 @@
+//@version=6
+indicator("MurshidFx Premium V1.0 [FIXED]", shorttitle="MurshidFx Fixed", overlay=true, max_lines_count=500, max_boxes_count=500, max_labels_count=500, max_bars_back=5000)
+
+// ==========================================
+// === Section 1: Main Display Controls ===
+// ==========================================
+
+// 🎛️ MAIN TOGGLES
+showHTFCandles = input.bool(true, "📊 Show HTF Candles", group="🎛️ Main Controls", tooltip="Master toggle to show/hide all higher timeframe candles")
+showHistoricalIntervals = input.bool(true, "📦 Show Interval Separators", group="🎛️ Main Controls", tooltip="Toggle to show/hide interval separator boxes and lines")
+showOpenPrice = input.bool(true, "📏 Show Open Price Lines", group="🎛️ Main Controls", tooltip="Show horizontal line at the current interval's first candle open price")
+
+// 📊 DISPLAY QUANTITY - Added validation
+displayCount = math.max(1, math.min(20, input.int(5, "📈 Historical Display Count", group="📊 Display Settings", minval=1, maxval=20, tooltip="Number of historical candles and intervals to display (1-20)")))
+
+// 🎨 VISUAL SPACING - Added validation
+paddingOffset = math.max(1, input.int(22, "📏 Candle Padding from Current Bar", group="🎨 Spacing & Layout", minval=1, maxval=50, tooltip="Distance between current bar and first HTF candle"))
+candleBuffer = math.max(1, input.int(1, "📐 Space Between Candles", group="🎨 Spacing & Layout", minval=1, maxval=4, tooltip="Horizontal spacing between individual candles"))
+htfBuffer = math.max(1, input.int(10, "📊 Space Between HTF Sets", group="🎨 Spacing & Layout", minval=1, maxval=20, tooltip="Horizontal spacing between different timeframe sets"))
+candleWidth = math.max(1, input.int(1, "📏 Candle Width", group="🎨 Spacing & Layout", minval=1, maxval=4, tooltip="Width of individual candles") * 2)
+
+// ==========================================
+// === Section 2: HTF Candles Styling ===
+// ==========================================
+
+// 🕯️ CANDLE COLORS
+bullColor = input.color(color.new(#81c784, 10), "🟢 Bullish Candle Color", group="🕯️ HTF Candles", tooltip="Background color for bullish (green) candles")
+bearColor = input.color(color.new(#000000, 10), "🔴 Bearish Candle Color", group="🕯️ HTF Candles", tooltip="Background color for bearish (red) candles")
+frameColor = input.color(color.new(color.black, 10), "⚫ Candle Frame Color", group="🕯️ HTF Candles", tooltip="Border color for candle frames and wicks")
+
+// 🏷️ CANDLE LABELS
+showIntervalValue = input.bool(true, "🏷️ Show Timeframe Labels", group="🕯️ HTF Candles", tooltip="Display timeframe labels (15m, 1H, 1D, etc.) on candles")
+intervalValueColor = input.color(#ff9800, "🏷️ Label Color", group="🕯️ HTF Candles", tooltip="Color for timeframe labels")
+
+// ==========================================
+// === Section 3: Interval Separators ===
+// ==========================================
+
+// 📦 SEPARATOR STYLING
+boxColor = input.color(color.new(color.gray, 0), "📦 Separator Line Color", group="📦 Interval Separators", tooltip="Color for interval separator lines and boxes")
+lineWidth = math.max(1, math.min(5, input.int(1, "📏 Separator Line Width", group="📦 Interval Separators", minval=1, maxval=5, tooltip="Thickness of separator lines")))
+lineStyle = input.string("dotted", "📐 Separator Line Style", group="📦 Interval Separators", options=["solid", "dotted", "dashed"], tooltip="Visual style of separator lines")
+
+// ==========================================
+// === Section 4: Open Price Lines ===
+// ==========================================
+
+// 📏 OPEN PRICE LINE STYLING
+openPriceColor = input.color(color.new(color.black, 0), "📏 Open Price Line Color", group="📏 Open Price Lines", tooltip="Color for current interval open price line")
+openPriceWidth = math.max(1, math.min(3, input.int(1, "📐 Open Price Line Width", group="📏 Open Price Lines", minval=1, maxval=3, tooltip="Thickness of current interval open price line")))
+openPriceStyle = input.string("dotted", "📐 Open Price Line Style", group="📏 Open Price Lines", options=["solid", "dotted", "dashed"], tooltip="Visual style of current interval open price line")
+
+// 🏷️ OPEN PRICE LABELS
+showOpenLabel = input.bool(true, "🏷️ Show Open Labels", group="📏 Open Price Lines", tooltip="Display 'Open' labels on each open price line")
+openLabelColor = input.color(color.new(color.black, 0), "🏷️ Open Label Color", group="📏 Open Price Lines", tooltip="Color for 'Open' labels")
+openLabelSize = input.string("small", "📏 Open Label Size", group="📏 Open Price Lines", options=["tiny", "small", "normal", "large"], tooltip="Size of 'Open' labels")
+
+// 📊 MID-LINE SETTINGS
+showMidLine = input.bool(true, "📊 Show Mid-Line", group="📊 Mid-Line Settings", tooltip="Show mid-line (high-low midpoint) for the most recent closed interval")
+midLineColor = input.color(color.new(color.red, 20), "📊 Mid-Line Color", group="📊 Mid-Line Settings", tooltip="Color for mid-line")
+midLineWidth = math.max(1, math.min(3, input.int(1, "📊 Mid-Line Width", group="📊 Mid-Line Settings", minval=1, maxval=3, tooltip="Thickness of mid-line")))
+midLineStyle = input.string("dotted", "📊 Mid-Line Style", group="📊 Mid-Line Settings", options=["solid", "dotted", "dashed"], tooltip="Visual style of mid-line")
+showMidLabel = input.bool(false, "📊 Show Mid Label", group="📊 Mid-Line Settings", tooltip="Display 'Mid' label on mid-line")
+midLabelColor = input.color(color.new(color.red, 0), "📊 Mid Label Color", group="📊 Mid-Line Settings", tooltip="Color for 'Mid' label")
+
+// ==========================================
+// === Section 5: Market Structure ===
+// ==========================================
+
+// 🔍 FAIR VALUE GAPS (FVG)
+showFVG = input.bool(false, "🔍 Show Fair Value Gaps", group="🔍 Market Structure", tooltip="Highlight Fair Value Gaps between candles")
+fvgColor = input.color(color.new(color.gray, 80), "🔍 FVG Color", group="🔍 Market Structure", tooltip="Background color for Fair Value Gap areas")
+
+// 📊 VOLUME IMBALANCE
+showVolumeImbalance = input.bool(false, "📊 Show Volume Imbalance", group="🔍 Market Structure", tooltip="Highlight Volume Imbalance areas")
+viColor = input.color(color.new(color.red, 50), "📊 Volume Imbalance Color", group="🔍 Market Structure", tooltip="Background color for Volume Imbalance areas")
+
+// 🔄 SWEEP DETECTION
+showSweeps = input.bool(true, "🔄 Show Sweeps", group="🔄 Sweep Detection", tooltip="Show liquidity sweeps on HTF candles")
+sweepColor = input.color(color.new(#f06292, 50), "🔄 Sweep Color", group="🔄 Sweep Detection", tooltip="Color for sweep lines")
+sweepWidth = math.max(1, math.min(5, input.int(1, "🔄 Sweep Width", group="🔄 Sweep Detection", minval=1, maxval=5, tooltip="Width of sweep lines")))
+
+// 📍 MIDPOINT DETECTION
+showMidpoints = input.bool(true, "📍 Show Midpoints", group="📍 Midpoint Detection", tooltip="Show midpoints of previous HTF candles")
+midpointColor = input.color(color.new(#fa9933, 0), "📍 Midpoint Color", group="📍 Midpoint Detection", tooltip="Color for midpoint lines")
+midpointWidth = math.max(1, math.min(5, input.int(2, "📍 Midpoint Width", group="📍 Midpoint Detection", minval=1, maxval=5, tooltip="Width of midpoint lines")))
+
+// ==========================================
+// === Section 6: Professional Dashboard ===
+// ==========================================
+
+// 📊 DASHBOARD CONTROLS
+showDashboard = input.bool(true, "📊 Show Professional Dashboard", group="📊 Professional Dashboard", tooltip="Display professional dashboard with trading information")
+dashboardTitle = input.string("MURSHID FX", "🏢 Company Name", group="📊 Professional Dashboard", tooltip="Company name for dashboard header")
+dashboardMotto = input.string("PATIENCE | DISCIPLINE | FEARLESS", "💎 Company Motto", group="📊 Professional Dashboard", tooltip="Company motto/philosophy")
+dashboardPosition = input.string("top-right", "📍 Dashboard Position", group="📊 Professional Dashboard", options=["top-left", "top-right", "bottom-left", "bottom-right"], tooltip="Position of the dashboard on the chart")
+
+// 🎨 DASHBOARD STYLING
+dashboardBgColor = input.color(color.new(#ffffff, 5), "🎨 Dashboard Background", group="📊 Professional Dashboard", tooltip="Background color for the dashboard")
+textColor = input.color(color.new(#000000, 0), "🎨 Text Color", group="📊 Professional Dashboard", tooltip="Color for dashboard text")
+mottoTextColor = input.color(color.new(#666666, 0), "🎨 Motto Text Color", group="📊 Professional Dashboard", tooltip="Color for motto text")
+
+// Fixed dashboard colors
+dashboardBorderColor = color.new(#9c9c9c, 0)
+headerBgColor = color.new(#dbdbdb, 0)
+mottoBgColor = color.new(#f8f8f8, 0)
+
+// FIXED: Improved Timeframe Mapping with validation
+getHigherTF() =>
+    result = ""
+    currentTF = timeframe.period
+    
+    // Validate current timeframe
+    if na(currentTF)
+        result := "60"  // Default to 1H if timeframe is invalid
+    else if currentTF == "1"
+        result := "15"
+    else if currentTF == "3"
+        result := "30"	
+    else if currentTF == "5"
+        result := "60"
+    else if currentTF == "15"
+        result := "240"
+    else if currentTF == "30"
+        result := "360"
+    else if currentTF == "45"
+        result := "540"	
+    else if currentTF == "60"
+        result := "1D"
+    else if currentTF == "120"
+        result := "1D"
+    else if currentTF == "240"
+        result := "1W"
+    else if currentTF == "1D"
+        result := "1M"
+    else if currentTF == "1W"
+        result := "3M"
+    else if currentTF == "1M"
+        result := "12M"
+    else
+        // Handle unknown timeframes
+        result := "60"  // Default to 1H
+    
+    result
+
+// Get separator's higher timeframe
+higherTF = getHigherTF()
+// ==========================================
+// === Section 2: Data Types ===
+// ==========================================
+
+type Sweep
+    line htf_marker
+    bool is_high
+    int end_idx
+
+type Midpoint
+    line htf_marker
+    float price
+    int end_idx
+
+type Candle
+    float o = 0.0
+    float c = 0.0
+    float h = 0.0
+    float l = 0.0
+    int o_time = 0
+    int o_idx = 0
+    int c_idx = 0
+    int h_idx = 0
+    int l_idx = 0
+    string dow = ""
+    box body
+    line wick_up
+    line wick_down
+    label dow_label
+    array<Sweep> sweeps
+    array<Midpoint> midpoints
+
+type Imbalance
+    box b
+    int idx
+
+type CandleSettings
+    bool show = false
+    string htf = ""
+    int max_display = 5
+
+type Settings
+    int max_sets = 6
+    color bull_body
+    color bull_border
+    color bull_wick
+    color bear_body
+    color bear_border
+    color bear_wick
+    int offset = 10
+    int buffer = 1
+    int htf_buffer = 10
+    int width = 2
+    bool use_custom_daily = false
+    string custom_daily = "Midnight"
+    bool daily_name = true
+    bool fvg_show = false
+    color fvg_color
+    bool vi_show = false
+    color vi_color
+    bool htf_label_show = true
+    color htf_label_color
+    string htf_label_size = "small"
+    bool htf_timer_show = false
+    color htf_timer_color
+    string htf_timer_size = "normal"
+    color dow_color
+    string dow_size = "small"
+    string label_pos = "Both"
+    string label_align = "Align"
+    bool show_htf_candles = true
+    bool show_intervals = true
+    bool show_open_price = true
+    color open_price_color
+    int open_price_width = 1
+    string open_price_style = "dotted"
+    bool show_open_label = true
+    color open_label_color
+    string open_label_size = "small"
+    bool show_mid_line = true
+    color mid_line_color
+    int mid_line_width = 1
+    string mid_line_style = "dotted"
+    bool show_mid_label = false
+    color mid_label_color
+
+type CandleSet
+    array<Candle> candles
+    array<Imbalance> imbalances
+    array<Sweep> active_sweeps
+    array<Midpoint> active_midpoints
+    CandleSettings settings
+    int tfNumber = 1
+    label tfNameTop
+    label tfNameBottom
+    label tfTimerTop
+    label tfTimerBottom
+    array<line> openPriceLines
+    array<label> openPriceLabels
+
+type Helper
+    string name = 'Helper'
+
+// Initialize Settings
+Settings ictSettings = Settings.new()
+
+// Initialize CandleSettings with proper defaults
+var CandleSettings SettingsHTF1 = CandleSettings.new()
+var CandleSettings SettingsHTF2 = CandleSettings.new()
+var CandleSettings SettingsHTF3 = CandleSettings.new()
+var CandleSettings SettingsHTF4 = CandleSettings.new()
+var CandleSettings SettingsHTF5 = CandleSettings.new()
+var CandleSettings SettingsHTF6 = CandleSettings.new()
+
+// Initialize arrays properly
+var array<Candle> candles_1 = array.new<Candle>(0)
+var array<Candle> candles_2 = array.new<Candle>(0)
+var array<Candle> candles_3 = array.new<Candle>(0)
+var array<Candle> candles_4 = array.new<Candle>(0)
+var array<Candle> candles_5 = array.new<Candle>(0)
+var array<Candle> candles_6 = array.new<Candle>(0)
+
+var array<Imbalance> imbalances_1 = array.new<Imbalance>(0)
+var array<Imbalance> imbalances_2 = array.new<Imbalance>(0)
+var array<Imbalance> imbalances_3 = array.new<Imbalance>(0)
+var array<Imbalance> imbalances_4 = array.new<Imbalance>(0)
+var array<Imbalance> imbalances_5 = array.new<Imbalance>(0)
+var array<Imbalance> imbalances_6 = array.new<Imbalance>(0)
+
+var array<Sweep> active_sweeps_1 = array.new<Sweep>(0)
+var array<Sweep> active_sweeps_2 = array.new<Sweep>(0)
+var array<Sweep> active_sweeps_3 = array.new<Sweep>(0)
+var array<Sweep> active_sweeps_4 = array.new<Sweep>(0)
+var array<Sweep> active_sweeps_5 = array.new<Sweep>(0)
+var array<Sweep> active_sweeps_6 = array.new<Sweep>(0)
+
+var array<Midpoint> active_midpoints_1 = array.new<Midpoint>(0)
+var array<Midpoint> active_midpoints_2 = array.new<Midpoint>(0)
+var array<Midpoint> active_midpoints_3 = array.new<Midpoint>(0)
+var array<Midpoint> active_midpoints_4 = array.new<Midpoint>(0)
+var array<Midpoint> active_midpoints_5 = array.new<Midpoint>(0)
+var array<Midpoint> active_midpoints_6 = array.new<Midpoint>(0)
+
+var array<line> openPriceLines_1 = array.new<line>(0)
+var array<label> openPriceLabels_1 = array.new<label>(0)
+var array<line> openPriceLines_2 = array.new<line>(0)
+var array<label> openPriceLabels_2 = array.new<label>(0)
+var array<line> openPriceLines_3 = array.new<line>(0)
+var array<label> openPriceLabels_3 = array.new<label>(0)
+var array<line> openPriceLines_4 = array.new<line>(0)
+var array<label> openPriceLabels_4 = array.new<label>(0)
+var array<line> openPriceLines_5 = array.new<line>(0)
+var array<label> openPriceLabels_5 = array.new<label>(0)
+var array<line> openPriceLines_6 = array.new<line>(0)
+var array<label> openPriceLabels_6 = array.new<label>(0)
+
+// Initialize CandleSets
+var CandleSet htf1 = CandleSet.new()
+htf1.settings := SettingsHTF1
+htf1.candles := candles_1
+htf1.imbalances := imbalances_1
+htf1.active_sweeps := active_sweeps_1
+htf1.active_midpoints := active_midpoints_1
+htf1.tfNumber := 1
+htf1.openPriceLines := openPriceLines_1
+htf1.openPriceLabels := openPriceLabels_1
+
+var CandleSet htf2 = CandleSet.new()
+htf2.settings := SettingsHTF2
+htf2.candles := candles_2
+htf2.imbalances := imbalances_2
+htf2.active_sweeps := active_sweeps_2
+htf2.active_midpoints := active_midpoints_2
+htf2.tfNumber := 2
+htf2.openPriceLines := openPriceLines_2
+htf2.openPriceLabels := openPriceLabels_2
+
+var CandleSet htf3 = CandleSet.new()
+htf3.settings := SettingsHTF3
+htf3.candles := candles_3
+htf3.imbalances := imbalances_3
+htf3.active_sweeps := active_sweeps_3
+htf3.active_midpoints := active_midpoints_3
+htf3.tfNumber := 3
+htf3.openPriceLines := openPriceLines_3
+htf3.openPriceLabels := openPriceLabels_3
+
+var CandleSet htf4 = CandleSet.new()
+htf4.settings := SettingsHTF4
+htf4.candles := candles_4
+htf4.imbalances := imbalances_4
+htf4.active_sweeps := active_sweeps_4
+htf4.active_midpoints := active_midpoints_4
+htf4.tfNumber := 4
+htf4.openPriceLines := openPriceLines_4
+htf4.openPriceLabels := openPriceLabels_4
+
+var CandleSet htf5 = CandleSet.new()
+htf5.settings := SettingsHTF5
+htf5.candles := candles_5
+htf5.imbalances := imbalances_5
+htf5.active_sweeps := active_sweeps_5
+htf5.active_midpoints := active_midpoints_5
+htf5.tfNumber := 5
+htf5.openPriceLines := openPriceLines_5
+htf5.openPriceLabels := openPriceLabels_5
+
+var CandleSet htf6 = CandleSet.new()
+htf6.settings := SettingsHTF6
+htf6.candles := candles_6
+htf6.imbalances := imbalances_6
+htf6.active_sweeps := active_sweeps_6
+htf6.active_midpoints := active_midpoints_6
+htf6.tfNumber := 6
+htf6.openPriceLines := openPriceLines_6
+htf6.openPriceLabels := openPriceLabels_6
+
+// Fixed settings with no user inputs
+ictSettings.max_sets := 6
+ictSettings.use_custom_daily := false
+ictSettings.custom_daily := 'Midnight'
+ictSettings.bull_body := bullColor
+ictSettings.bear_body := bearColor
+ictSettings.bull_border := frameColor
+ictSettings.bear_border := frameColor
+ictSettings.bull_wick := frameColor
+ictSettings.bear_wick := frameColor
+
+// Use the restored padding settings with validation
+ictSettings.offset := paddingOffset
+ictSettings.buffer := candleBuffer
+ictSettings.htf_buffer := htfBuffer
+ictSettings.width := candleWidth
+
+ictSettings.htf_label_show := true
+ictSettings.htf_label_color := intervalValueColor
+ictSettings.htf_label_size := size.small
+
+ictSettings.label_pos := "Both"
+ictSettings.label_align := "Align"
+
+ictSettings.htf_timer_show := false
+ictSettings.htf_timer_color := color.new(color.black, 10)
+ictSettings.htf_timer_size := size.normal
+
+ictSettings.daily_name := showIntervalValue
+ictSettings.dow_color := intervalValueColor
+ictSettings.dow_size := size.small
+
+ictSettings.fvg_show := showFVG
+ictSettings.fvg_color := fvgColor
+ictSettings.vi_show := showVolumeImbalance
+ictSettings.vi_color := viColor
+
+// Open Price Line Settings
+ictSettings.show_htf_candles := showHTFCandles
+ictSettings.show_intervals := showHistoricalIntervals
+ictSettings.show_open_price := showOpenPrice
+ictSettings.open_price_color := openPriceColor
+ictSettings.open_price_width := openPriceWidth
+ictSettings.open_price_style := openPriceStyle
+ictSettings.show_open_label := showOpenLabel
+ictSettings.open_label_color := openLabelColor
+ictSettings.open_label_size := openLabelSize
+
+// Mid-Line Settings
+ictSettings.show_mid_line := showMidLine
+ictSettings.mid_line_color := midLineColor
+ictSettings.mid_line_width := midLineWidth
+ictSettings.mid_line_style := midLineStyle
+ictSettings.show_mid_label := showMidLabel
+ictSettings.mid_label_color := midLabelColor
+
+// FIXED: Initialize HTF settings only once
+var bool htfInitialized = false
+if not htfInitialized
+    htfInitialized := true
+    
+    // Initialize all HTF settings
+    htf1.settings.show := false
+    htf1.settings.htf := "15"
+    htf1.settings.max_display := displayCount
+
+    htf2.settings.show := false
+    htf2.settings.htf := "60"
+    htf2.settings.max_display := displayCount
+
+    htf3.settings.show := false
+    htf3.settings.htf := "240"
+    htf3.settings.max_display := displayCount
+
+    htf4.settings.show := false
+    htf4.settings.htf := "1D"
+    htf4.settings.max_display := displayCount
+
+    htf5.settings.show := false
+    htf5.settings.htf := "1W"
+    htf5.settings.max_display := displayCount
+
+    htf6.settings.show := false
+    htf6.settings.htf := "1M"
+    htf6.settings.max_display := displayCount
+// ==========================================
+// === Section 3: Helper Functions (FIXED) ===
+// ==========================================
+
+// Helper function to calculate offset for HTF sets
+calculateHTFOffset(array<Candle> candles, int currentOffset) =>
+    candlesSize = array.size(candles)
+    if candlesSize > 0
+        currentOffset + (candlesSize * ictSettings.width + (candlesSize - 1) * ictSettings.buffer + ictSettings.htf_buffer)
+    else
+        currentOffset + ictSettings.htf_buffer
+
+// Convert style to line.style constant
+getLineStyle() => 
+    if lineStyle == "solid"
+        line.style_solid
+    else if lineStyle == "dotted"
+        line.style_dotted
+    else
+        line.style_dashed
+
+// Convert open price style to line.style constant
+getOpenPriceLineStyle() => 
+    if openPriceStyle == "solid"
+        line.style_solid
+    else if openPriceStyle == "dotted"
+        line.style_dotted
+    else
+        line.style_dashed
+
+// Convert mid-line style to line.style constant
+getMidLineStyle() => 
+    if midLineStyle == "solid"
+        line.style_solid
+    else if midLineStyle == "dotted"
+        line.style_dotted
+    else
+        line.style_dashed
+
+// FIXED: Format date with proper bounds checking
+formatDate(timestamp) =>
+    months = array.from("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    // Use New York timezone for consistent display
+    day = dayofmonth(timestamp, "America/New_York")
+    monthVal = month(timestamp, "America/New_York")
+    yearVal = year(timestamp, "America/New_York")
+    
+    // FIXED: Add proper bounds checking for month array access
+    monthStr = "Invalid"
+    if monthVal >= 1 and monthVal <= 12 and array.size(months) >= 12
+        monthStr := array.get(months, monthVal - 1)
+    
+    dayStr = day < 10 ? "0" + str.tostring(day) : str.tostring(day)
+    
+    dayStr + "-" + monthStr + "-" + str.tostring(yearVal)
+
+// FIXED: Format time with proper validation
+formatTime(timestamp) =>
+    // Get current time in New York timezone
+    currentTime = timenow
+    hourVal = hour(currentTime, "America/New_York")
+    minuteVal = minute(currentTime, "America/New_York")
+    
+    // Validate hour and minute values
+    hourVal := math.max(0, math.min(23, hourVal))
+    minuteVal := math.max(0, math.min(59, minuteVal))
+    
+    hourStr = hourVal < 10 ? "0" + str.tostring(hourVal) : str.tostring(hourVal)
+    minuteStr = minuteVal < 10 ? "0" + str.tostring(minuteVal) : str.tostring(minuteVal)
+    
+    hourStr + ":" + minuteStr
+
+Helper helper = Helper.new()
+color color_transparent = #ffffff00
+
+method LineStyle(Helper helper, string style) =>
+    helper.name := style
+    result = line.style_solid
+    
+    if style == '----'
+        result := line.style_dashed
+    else if style == '····'
+        result := line.style_dotted
+    
+    result
+
+method DayofWeek(Helper helper, int index) =>
+    helper.name := 'DOW'
+    result = ''
+    
+    // FIXED: Validate index bounds
+    if index >= 1 and index <= 7
+        if index == 1
+            result := 'M'
+        else if index == 2
+            result := 'T'
+        else if index == 3
+            result := 'W'
+        else if index == 4
+            result := 'T'
+        else if index == 5
+            result := 'F'
+        else if index == 6
+            result := 'S'
+        else if index == 7
+            result := 'S'
+    
+    result
+
+// FIXED: ValidTimeframe with proper error handling
+method ValidTimeframe(Helper helper, string HTF) =>
+    helper.name := HTF
+    isValid = false
+    
+    // FIXED: Add comprehensive error handling
+    if not na(HTF) and HTF != ""
+        htfSeconds = timeframe.in_seconds(HTF)
+        currentSeconds = timeframe.in_seconds()
+        
+        if not na(htfSeconds) and not na(currentSeconds) and currentSeconds > 0
+            if htfSeconds >= timeframe.in_seconds('D') and htfSeconds > currentSeconds
+                isValid := true
+            else if currentSeconds < htfSeconds
+                // FIXED: Safe division check
+                ratio = htfSeconds / currentSeconds
+                if math.round(ratio) == ratio
+                    isValid := true
+    
+    isValid
+
+// FIXED: RemainingTime with error handling
+method RemainingTime(Helper helper, string HTF) =>
+    helper.name := HTF
+    result = 'n/a'
+    
+    if barstate.isrealtime and not na(HTF) and HTF != ""
+        closeTime = time_close(HTF)
+        if not na(closeTime) and closeTime > timenow
+            timeRemaining = (closeTime - timenow) / 1000
+            
+            // Validate timeRemaining is positive
+            if timeRemaining > 0
+                days = math.floor(timeRemaining / 86400)
+                hours = math.floor((timeRemaining - days * 86400) / 3600)
+                minutes = math.floor((timeRemaining - days * 86400 - hours * 3600) / 60)
+                seconds = math.floor(timeRemaining - days * 86400 - hours * 3600 - minutes * 60)
+
+                // Ensure values are within valid ranges
+                days := math.max(0, days)
+                hours := math.max(0, math.min(23, hours))
+                minutes := math.max(0, math.min(59, minutes))
+                seconds := math.max(0, math.min(59, seconds))
+
+                result := str.tostring(seconds, '00')
+                
+                if minutes > 0 or hours > 0 or days > 0
+                    result := str.tostring(minutes, '00') + ':' + result
+                
+                if hours > 0 or days > 0
+                    result := str.tostring(hours, '00') + ':' + result
+                
+                if days > 0
+                    result := str.tostring(days) + 'D ' + result
+    
+    result
+
+// FIXED: HTFName with validation
+method HTFName(Helper helper, string HTF) =>
+    helper.name := 'HTFName'
+    formatted = HTF
+
+    if not na(HTF) and HTF != ""
+        seconds = timeframe.in_seconds(HTF)
+        
+        if not na(seconds) and seconds > 0
+            if seconds < 60
+                formatted := str.tostring(seconds) + 's'
+            else if seconds / 60 < 60
+                formatted := str.tostring(math.round(seconds / 60)) + 'm'
+            else if seconds / 60 / 60 < 24
+                formatted := str.tostring(math.round(seconds / 60 / 60)) + 'H'
+    
+    formatted
+
+method HTFEnabled(Helper helper) =>
+    helper.name := 'HTFEnabled'
+    int enabled = 0
+    
+    if ictSettings.show_htf_candles
+        if htf1.settings.show and helper.ValidTimeframe(htf1.settings.htf)
+            enabled := enabled + 1
+        
+        if htf2.settings.show and helper.ValidTimeframe(htf2.settings.htf)
+            enabled := enabled + 1
+        
+        if htf3.settings.show and helper.ValidTimeframe(htf3.settings.htf)
+            enabled := enabled + 1
+        
+        if htf4.settings.show and helper.ValidTimeframe(htf4.settings.htf)
+            enabled := enabled + 1
+        
+        if htf5.settings.show and helper.ValidTimeframe(htf5.settings.htf)
+            enabled := enabled + 1
+        
+        if htf6.settings.show and helper.ValidTimeframe(htf6.settings.htf)
+            enabled := enabled + 1
+    
+    int last = math.min(enabled, ictSettings.max_sets)
+    last
+
+// FIXED: CandleSetHigh with proper validation
+method CandleSetHigh(Helper helper, array<Candle> candles, float h) =>
+    helper.name := 'CandlesSetHigh'
+    float _h = h
+    
+    if not na(candles)
+        candlesSize = array.size(candles)
+        if candlesSize > 0
+            for i = 0 to candlesSize - 1
+                if i < candlesSize  // Extra bounds check
+                    Candle c = array.get(candles, i)
+                    if not na(c) and not na(c.h) and c.h > _h
+                        _h := c.h
+    
+    _h
+
+// FIXED: CandleSetLow with proper validation
+method CandleSetLow(Helper helper, array<Candle> candles, float l) =>
+    helper.name := 'CandlesSetLow'
+    float _l = l
+    
+    if not na(candles)
+        candlesSize = array.size(candles)
+        if candlesSize > 0
+            for i = 0 to candlesSize - 1
+                if i < candlesSize  // Extra bounds check
+                    Candle c = array.get(candles, i)
+                    if not na(c) and not na(c.l) and c.l < _l
+                        _l := c.l
+    
+    _l
+
+// FIXED: CandlesHigh with proper validation
+method CandlesHigh(Helper helper, array<Candle> candles) =>
+    helper.name := 'CandlesHigh'
+    h = 0.0
+    int cnt = 0
+    int last = helper.HTFEnabled()
+
+    if ictSettings.show_htf_candles and last > 0
+        if htf1.settings.show and helper.ValidTimeframe(htf1.settings.htf)
+            h := helper.CandleSetHigh(htf1.candles, h)
+            cnt := cnt + 1
+        
+        if htf2.settings.show and helper.ValidTimeframe(htf2.settings.htf) and cnt < last
+            h := helper.CandleSetHigh(htf2.candles, h)
+            cnt := cnt + 1
+        
+        if htf3.settings.show and helper.ValidTimeframe(htf3.settings.htf) and cnt < last
+            h := helper.CandleSetHigh(htf3.candles, h)
+            cnt := cnt + 1
+        
+        if htf4.settings.show and helper.ValidTimeframe(htf4.settings.htf) and cnt < last
+            h := helper.CandleSetHigh(htf4.candles, h)
+            cnt := cnt + 1
+        
+        if htf5.settings.show and helper.ValidTimeframe(htf5.settings.htf) and cnt < last
+            h := helper.CandleSetHigh(htf5.candles, h)
+            cnt := cnt + 1
+        
+        if htf6.settings.show and helper.ValidTimeframe(htf6.settings.htf) and cnt < last
+            h := helper.CandleSetHigh(htf6.candles, h)
+
+    // Additional validation for passed candles array
+    if not na(candles)
+        candlesSize = array.size(candles)
+        if candlesSize > 0
+            for i = 0 to candlesSize - 1
+                if i < candlesSize
+                    Candle c = array.get(candles, i)
+                    if not na(c) and not na(c.h) and c.h > h
+                        h := c.h
+    
+    h
+
+// FIXED: CandlesLow with proper validation
+method CandlesLow(Helper helper, array<Candle> candles, float h) =>
+    helper.name := 'CandlesLow'
+    l = h
+    int cnt = 0
+    int last = helper.HTFEnabled()
+
+    if ictSettings.show_htf_candles and last > 0
+        if htf1.settings.show and helper.ValidTimeframe(htf1.settings.htf)
+            l := helper.CandleSetLow(htf1.candles, l)
+            cnt := cnt + 1
+        
+        if htf2.settings.show and helper.ValidTimeframe(htf2.settings.htf) and cnt < last
+            l := helper.CandleSetLow(htf2.candles, l)
+            cnt := cnt + 1
+        
+        if htf3.settings.show and helper.ValidTimeframe(htf3.settings.htf) and cnt < last
+            l := helper.CandleSetLow(htf3.candles, l)
+            cnt := cnt + 1
+        
+        if htf4.settings.show and helper.ValidTimeframe(htf4.settings.htf) and cnt < last
+            l := helper.CandleSetLow(htf4.candles, l)
+            cnt := cnt + 1
+        
+        if htf5.settings.show and helper.ValidTimeframe(htf5.settings.htf) and cnt < last
+            l := helper.CandleSetLow(htf5.candles, l)
+            cnt := cnt + 1
+        
+        if htf6.settings.show and helper.ValidTimeframe(htf6.settings.htf) and cnt < last
+            l := helper.CandleSetLow(htf6.candles, l)
+
+    // Additional validation for passed candles array
+    if not na(candles)
+        candlesSize = array.size(candles)
+        if candlesSize > 0
+            for i = 0 to candlesSize - 1
+                if i < candlesSize
+                    Candle c = array.get(candles, i)
+                    if not na(c) and not na(c.l) and c.l < l
+                        l := c.l
+    
+    l
+// ==========================================
+// === Section 3.5: Dashboard Helper Functions (FIXED) ===
+// ==========================================
+
+// FIXED: Get HTF name formatted for display with validation
+getHTFName(string HTF) =>
+    formatted = HTF
+    
+    if not na(HTF) and HTF != ""
+        seconds = timeframe.in_seconds(HTF)
+        
+        if not na(seconds) and seconds > 0
+            if seconds < 60
+                formatted := str.tostring(seconds) + 's'
+            else if seconds / 60 < 60
+                formatted := str.tostring(math.round(seconds / 60)) + 'm'
+            else if seconds / 60 / 60 < 24
+                formatted := str.tostring(math.round(seconds / 60 / 60)) + 'H'
+    
+    formatted
+
+// FIXED: Calculate remaining time with validation
+calculateRemainingTimeOriginal() =>
+    result = 'n/a'
+    
+    if barstate.isrealtime and not na(higherTF) and higherTF != ""
+        closeTime = time_close(higherTF)
+        
+        if not na(closeTime) and closeTime > timenow
+            timeRemaining = (closeTime - timenow) / 1000
+            
+            if timeRemaining > 0
+                days = math.floor(timeRemaining / 86400)
+                hours = math.floor((timeRemaining - days * 86400) / 3600)
+                minutes = math.floor((timeRemaining - days * 86400 - hours * 3600) / 60)
+                seconds = math.floor(timeRemaining - days * 86400 - hours * 3600 - minutes * 60)
+
+                // Validate ranges
+                days := math.max(0, days)
+                hours := math.max(0, math.min(23, hours))
+                minutes := math.max(0, math.min(59, minutes))
+                seconds := math.max(0, math.min(59, seconds))
+
+                result := str.tostring(seconds, '00')
+                
+                if minutes > 0 or hours > 0 or days > 0
+                    result := str.tostring(minutes, '00') + ':' + result
+                
+                if hours > 0 or days > 0
+                    result := str.tostring(hours, '00') + ':' + result
+                
+                if days > 0
+                    result := str.tostring(days) + 'D ' + result
+    
+    result
+
+// FIXED: Format dashboard date with bounds checking
+formatDashboardDate(timestamp) =>
+    months = array.from("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    
+    // Use chart timezone for local display
+    dayVal = dayofmonth(timestamp)
+    monthVal = month(timestamp)
+    yearVal = year(timestamp)
+    
+    // FIXED: Add bounds checking for month array access
+    monthStr = "Invalid"
+    if monthVal >= 1 and monthVal <= 12 and array.size(months) >= 12
+        monthStr := array.get(months, monthVal - 1)
+    
+    dayStr = dayVal < 10 ? "0" + str.tostring(dayVal) : str.tostring(dayVal)
+    
+    dayStr + "-" + monthStr + "-" + str.tostring(yearVal)
+
+// FIXED: Format dashboard time with validation
+formatDashboardTime(timestamp) =>
+    // Get current time in chart timezone
+    hourVal = hour(timestamp)
+    minuteVal = minute(timestamp)
+    
+    // Validate ranges
+    hourVal := math.max(0, math.min(23, hourVal))
+    minuteVal := math.max(0, math.min(59, minuteVal))
+    
+    hourStr = hourVal < 10 ? "0" + str.tostring(hourVal) : str.tostring(hourVal)
+    minuteStr = minuteVal < 10 ? "0" + str.tostring(minuteVal) : str.tostring(minuteVal)
+    
+    hourStr + ":" + minuteStr
+
+// ==========================================
+// === Section 4: HTF Candle Methods (FIXED) ===
+// ==========================================
+
+// FIXED: UpdateTime with null checks
+method UpdateTime(CandleSet candleSet, int offset) =>
+    if ictSettings.htf_timer_show and (barstate.isrealtime or barstate.islast)
+        if not na(candleSet) and not na(candleSet.settings) and not na(candleSet.settings.htf)
+            string tmr = '(' + helper.RemainingTime(candleSet.settings.htf) + ')'
+
+            if not na(candleSet.tfTimerTop)
+                candleSet.tfTimerTop.set_text(tmr)
+
+            if not na(candleSet.tfTimerBottom)
+                candleSet.tfTimerBottom.set_text(tmr)
+    
+    candleSet
+
+// FIXED: Reorder with comprehensive validation
+method Reorder(CandleSet candleSet, int offset) =>
+    if not na(candleSet) and not na(candleSet.candles)
+        size = candleSet.candles.size()
+
+        if size > 0
+            for i = size - 1 to 0
+                if i >= 0 and i < size  // Extra bounds check
+                    Candle candle = candleSet.candles.get(i)
+                    if not na(candle)
+                        t_buffer = offset + (ictSettings.width + ictSettings.buffer) * (size - i - 1)
+                        
+                        if not na(candle.body)
+                            box.set_left(candle.body, bar_index + t_buffer)
+                            box.set_right(candle.body, bar_index + ictSettings.width + t_buffer)
+                        
+                        if not na(candle.wick_up)
+                            line.set_x1(candle.wick_up, bar_index + ictSettings.width / 2 + t_buffer)
+                            line.set_x2(candle.wick_up, bar_index + ictSettings.width / 2 + t_buffer)
+                        
+                        if not na(candle.wick_down)
+                            line.set_x1(candle.wick_down, bar_index + ictSettings.width / 2 + t_buffer)
+                            line.set_x2(candle.wick_down, bar_index + ictSettings.width / 2 + t_buffer)
+
+                        if ictSettings.daily_name
+                            if not na(candle.dow_label)
+                                candle.dow_label.set_y(candle.h)
+                                candle.dow_label.set_x(bar_index + ictSettings.width / 2 + t_buffer)
+                                candle.dow_label.set_text(candle.dow)
+                            else if candle.dow != ""
+                                candle.dow_label := label.new(bar_index + ictSettings.width / 2 + t_buffer, candle.h, candle.dow, color = color_transparent, textcolor = ictSettings.dow_color, style = label.style_label_down, size = ictSettings.dow_size)
+
+        top = 0.0
+        bottom = 0.0
+
+        if ictSettings.label_align == 'Align'
+            top := helper.CandlesHigh(candleSet.candles)
+            bottom := helper.CandlesLow(candleSet.candles, top)
+        
+        if ictSettings.label_align == 'Follow Candles'
+            top := helper.CandleSetHigh(candleSet.candles, 0)
+            bottom := helper.CandleSetLow(candleSet.candles, top)
+
+        left = bar_index + offset + (ictSettings.width + ictSettings.buffer) * math.max(0, size - 1) / 2
+
+        if ictSettings.htf_label_show and not na(candleSet.settings) and not na(candleSet.settings.htf)
+            string lblt = helper.HTFName(candleSet.settings.htf)
+            string lbll = lblt
+            
+            if ictSettings.htf_timer_show
+                lblt := lblt + '\n'
+                lbll := '\n' + lbll
+            
+            if ictSettings.daily_name
+                lblt := lblt + '\n'
+
+            string tmr = '(' + helper.RemainingTime(candleSet.settings.htf) + ')' + (ictSettings.daily_name ? '\n' : '')
+            
+            if ictSettings.label_pos == 'Both' or ictSettings.label_pos == 'Top'
+                if not na(candleSet.tfNameTop)
+                    candleSet.tfNameTop.set_xy(left, top)
+                else
+                    candleSet.tfNameTop := label.new(left, top, lblt, color = color_transparent, textcolor = ictSettings.htf_label_color, style = label.style_label_down, size = ictSettings.htf_label_size)
+                
+                if ictSettings.htf_timer_show
+                    if not na(candleSet.tfTimerTop)
+                        candleSet.tfTimerTop.set_xy(left, top)
+                    else
+                        candleSet.tfTimerTop := label.new(left, top, tmr, color = color_transparent, textcolor = ictSettings.htf_timer_color, style = label.style_label_down, size = ictSettings.htf_timer_size)
+            
+            if ictSettings.label_pos == 'Both' or ictSettings.label_pos == 'Bottom'
+                if not na(candleSet.tfNameBottom)
+                    candleSet.tfNameBottom.set_xy(left, bottom)
+                else
+                    candleSet.tfNameBottom := label.new(left, bottom, lbll, color = color_transparent, textcolor = ictSettings.htf_label_color, style = label.style_label_up, size = ictSettings.htf_label_size)
+                
+                if ictSettings.htf_timer_show
+                    if not na(candleSet.tfTimerBottom)
+                        candleSet.tfTimerBottom.set_xy(left, bottom)
+                    else
+                        candleSet.tfTimerBottom := label.new(left, bottom, tmr, color = color_transparent, textcolor = ictSettings.htf_timer_color, style = label.style_label_up, size = ictSettings.htf_timer_size)
+    
+    candleSet
+
+// FIXED: FindImbalance with proper cleanup and validation
+method FindImbalance(CandleSet candleSet) =>
+    if not na(candleSet) and (barstate.isrealtime or barstate.islast)
+        // Clean up existing imbalances
+        if not na(candleSet.imbalances) and candleSet.imbalances.size() > 0
+            for i = candleSet.imbalances.size() - 1 to 0
+                if i >= 0 and i < candleSet.imbalances.size()
+                    Imbalance del = candleSet.imbalances.get(i)
+                    if not na(del) and not na(del.b)
+                        box.delete(del.b)
+                    candleSet.imbalances.pop()
+
+        // Find new imbalances
+        if not na(candleSet.candles) and candleSet.candles.size() > 3 and ictSettings.fvg_show
+            candlesSize = candleSet.candles.size()
+            for i = 0 to math.min(candlesSize - 3, candlesSize - 1)
+                if i + 2 < candlesSize  // Bounds check
+                    candle1 = candleSet.candles.get(i)
+                    candle2 = candleSet.candles.get(i + 2)
+                    candle3 = candleSet.candles.get(i + 1)
+
+                    if not na(candle1) and not na(candle2) and not na(candle3)
+                        // Bullish FVG
+                        if candle1.l > candle2.h and math.min(candle1.o, candle1.c) > math.max(candle2.o, candle2.c)
+                            Imbalance imb = Imbalance.new()
+                            if not na(candle2.body) and not na(candle1.body)
+                                imb.b := box.new(box.get_left(candle2.body), candle2.h, box.get_right(candle1.body), candle1.l, bgcolor = ictSettings.fvg_color, border_color = color_transparent, xloc = xloc.bar_index)
+                                candleSet.imbalances.push(imb)
+                        
+                        // Bearish FVG
+                        if candle1.h < candle2.l and math.max(candle1.o, candle1.c) < math.min(candle2.o, candle2.c)
+                            Imbalance imb = Imbalance.new()
+                            if not na(candle1.body) and not na(candle2.body)
+                                imb.b := box.new(box.get_right(candle1.body), candle1.h, box.get_left(candle2.body), candle2.l, bgcolor = ictSettings.fvg_color, border_color = color_transparent, xloc = xloc.bar_index)
+                                candleSet.imbalances.push(imb)
+                        
+                        // Refresh candle3 body
+                        if not na(candle3.body)
+                            box temp = box.copy(candle3.body)
+                            box.delete(candle3.body)
+                            candle3.body := temp
+
+        // Volume Imbalance
+        if not na(candleSet.candles) and candleSet.candles.size() > 2 and ictSettings.vi_show
+            candlesSize = candleSet.candles.size()
+            for i = 0 to math.min(candlesSize - 2, candlesSize - 1)
+                if i + 1 < candlesSize  // Bounds check
+                    candle1 = candleSet.candles.get(i)
+                    candle2 = candleSet.candles.get(i + 1)
+                    
+                    if not na(candle1) and not na(candle2)
+                        // Bullish VI
+                        if candle1.l < candle2.h and math.min(candle1.o, candle1.c) > math.max(candle2.o, candle2.c)
+                            Imbalance imb = Imbalance.new()
+                            if not na(candle2.body) and not na(candle1.body)
+                                imb.b := box.new(box.get_left(candle2.body), math.min(candle1.o, candle1.c), box.get_right(candle1.body), math.max(candle2.o, candle2.c), bgcolor = ictSettings.vi_color, border_color = color_transparent, xloc = xloc.bar_index)
+                                candleSet.imbalances.push(imb)
+                        
+                        // Bearish VI
+                        if candle1.h > candle2.l and math.max(candle1.o, candle1.c) < math.min(candle2.o, candle2.c)
+                            Imbalance imb = Imbalance.new()
+                            if not na(candle1.body) and not na(candle2.body)
+                                imb.b := box.new(box.get_right(candle1.body), math.min(candle2.o, candle2.c), box.get_left(candle2.body), math.max(candle1.o, candle1.c), bgcolor = ictSettings.vi_color, border_color = color_transparent, xloc = xloc.bar_index)
+                                candleSet.imbalances.push(imb)
+    
+    candleSet
+// FIXED: Monitor method with proper initialization and validation
+method Monitor(CandleSet candleSet) =>
+    if not na(candleSet) and not na(candleSet.settings) and not na(candleSet.settings.htf)
+        // Cache timezone for performance
+        timezone = 'America/New_York'
+        
+        // Determine if new HTF candle based on settings
+        isNewHTFCandle = false
+        if ictSettings.use_custom_daily and candleSet.settings.htf == '1D'
+            isNewHTFCandle := switch ictSettings.custom_daily
+                'Midnight' => dayofweek(time, timezone) != dayofweek(time[1], timezone)
+                '8:30' => not na(time(timeframe.period, "0830-0831:123456", timezone)) and na(time(timeframe.period, "0830-0831:123456", timezone)[1])
+                '9:30' => not na(time(timeframe.period, "0930-0931:123456", timezone)) and na(time(timeframe.period, "0930-0931:123456", timezone)[1])
+                => false
+        else
+            isNewHTFCandle := ta.change(time(candleSet.settings.htf, timezone)) > 0
+        
+        if isNewHTFCandle
+            // Pre-calculate candle properties
+            bull = close > open
+            body_top = math.max(open, close)
+            body_bottom = math.min(open, close)
+            
+            // Create new candle with optimized initialization
+            candle = Candle.new()
+            candle.o := open
+            candle.c := close
+            candle.h := high
+            candle.l := low
+            candle.o_time := time
+            candle.o_idx := bar_index
+            candle.c_idx := bar_index
+            candle.h_idx := bar_index
+            candle.l_idx := bar_index
+            
+            // Set day of week label with validation
+            if candleSet.settings.htf == '1D'
+                dow = dayofweek(time_tradingday, timezone)
+                candle.dow := helper.DayofWeek(dow)
+            else if not na(str.tonumber(candleSet.settings.htf))
+                tfNum = str.tonumber(candleSet.settings.htf)
+                if tfNum < 60
+                    candle.dow := str.format("{0,number,00}", minute(candle.o_time, timezone))
+                else if tfNum >= 60
+                    candle.dow := str.format("{0,number,00}", hour(candle.o_time, timezone))
+            else if candleSet.settings.htf == '1M'
+                candle.dow := str.format("{0,number,00}", month(candle.o_time, timezone))
+            else
+                candle.dow := ''
+            
+            // Create visual elements
+            candle.body := box.new(bar_index, body_top, bar_index + 2, body_bottom, bull ? ictSettings.bull_border : ictSettings.bear_border, 1, bgcolor=bull ? ictSettings.bull_body : ictSettings.bear_body, xloc=xloc.bar_index)
+            candle.wick_up := line.new(bar_index + 1, high, bar_index, body_top, color=bull ? ictSettings.bull_wick : ictSettings.bear_wick, xloc=xloc.bar_index)
+            candle.wick_down := line.new(bar_index + 1, body_bottom, bar_index, low, color=bull ? ictSettings.bull_wick : ictSettings.bear_wick, xloc=xloc.bar_index)
+            
+            // Initialize arrays
+            candle.sweeps := array.new<Sweep>(0)
+            candle.midpoints := array.new<Midpoint>(0)
+            
+            // Add candle to front of array with validation
+            if not na(candleSet.candles)
+                candleSet.candles.unshift(candle)
+                
+                // Remove excess candles and clean up resources
+                if candleSet.candles.size() > candleSet.settings.max_display
+                    delCandle = candleSet.candles.pop()
+                    
+                    if not na(delCandle)
+                        // Batch delete UI elements
+                        if not na(delCandle.body)
+                            box.delete(delCandle.body)
+                        if not na(delCandle.wick_up)
+                            line.delete(delCandle.wick_up)
+                        if not na(delCandle.wick_down)
+                            line.delete(delCandle.wick_down)
+                        
+                        if not na(delCandle.dow_label)
+                            label.delete(delCandle.dow_label)
+                        
+                        // Clean up sweeps
+                        if not na(delCandle.sweeps) and delCandle.sweeps.size() > 0
+                            for i = 0 to delCandle.sweeps.size() - 1
+                                if i < delCandle.sweeps.size()
+                                    sweep = delCandle.sweeps.get(i)
+                                    if not na(sweep) and not na(sweep.htf_marker)
+                                        line.delete(sweep.htf_marker)
+                            delCandle.sweeps.clear()
+                        
+                        // Clean up midpoints
+                        if not na(delCandle.midpoints) and delCandle.midpoints.size() > 0
+                            for i = 0 to delCandle.midpoints.size() - 1
+                                if i < delCandle.midpoints.size()
+                                    midpoint = delCandle.midpoints.get(i)
+                                    if not na(midpoint) and not na(midpoint.htf_marker)
+                                        line.delete(midpoint.htf_marker)
+                            delCandle.midpoints.clear()
+    
+    candleSet
+
+// FIXED: CheckSweeps with comprehensive validation
+method CheckSweeps(CandleSet candleSet) =>
+    // Early exit if sweeps disabled or insufficient candles
+    if not showSweeps or na(candleSet) or na(candleSet.candles) or candleSet.candles.size() < 2
+        candleSet
+    else
+        // Validate candles exist
+        if candleSet.candles.size() >= 1
+            curr_candle = candleSet.candles.get(0)
+            
+            if not na(curr_candle) and candleSet.candles.size() >= 2
+                prev_candle = candleSet.candles.get(1)
+                
+                if not na(prev_candle)
+                    // Initialize sweeps array only when needed
+                    if na(curr_candle.sweeps)
+                        curr_candle.sweeps := array.new<Sweep>(0)
+                    
+                    // Cache HTF change check
+                    isNewHTFCandle = false
+                    if not na(candleSet.settings) and not na(candleSet.settings.htf)
+                        isNewHTFCandle := ta.change(time(candleSet.settings.htf)) > 0
+                    
+                    if isNewHTFCandle and candleSet.candles.size() >= 3
+                        candle_before_prev = candleSet.candles.get(2)
+                        
+                        if not na(candle_before_prev)
+                            // Clean up invalidated sweeps from previous candle
+                            if not na(prev_candle.sweeps) and prev_candle.sweeps.size() > 0
+                                for i = prev_candle.sweeps.size() - 1 to 0
+                                    if i >= 0 and i < prev_candle.sweeps.size()
+                                        sweep = prev_candle.sweeps.get(i)
+                                        if not na(sweep)
+                                            should_remove = false
+                                            
+                                            if sweep.is_high and prev_candle.c >= candle_before_prev.h
+                                                should_remove := true
+                                            else if not sweep.is_high and prev_candle.c <= candle_before_prev.l
+                                                should_remove := true
+                                            
+                                            if should_remove
+                                                if not na(sweep.htf_marker)
+                                                    line.delete(sweep.htf_marker)
+                                                prev_candle.sweeps.remove(i)
+                    
+                    // Pre-calculate values for sweep detection
+                    next_period_end = curr_candle.o_time + timeframe.in_seconds(candleSet.settings.htf) * 1000
+                    t_buffer = ictSettings.offset + (ictSettings.width + ictSettings.buffer) * math.max(0, candleSet.candles.size() - 1)
+                    
+                    // Check for bearish sweep
+                    if high > prev_candle.h and close < prev_candle.h
+                        // Look for existing bearish sweep in current HTF candle
+                        Sweep existing_bearish_sweep = na
+                        if not na(curr_candle.sweeps) and curr_candle.sweeps.size() > 0
+                            for i = 0 to curr_candle.sweeps.size() - 1
+                                if i < curr_candle.sweeps.size()
+                                    sweep_check = curr_candle.sweeps.get(i)
+                                    if not na(sweep_check) and sweep_check.is_high
+                                        existing_bearish_sweep := sweep_check
+                                        break
+                        
+                        if na(existing_bearish_sweep)
+                            // Create new bearish sweep
+                            sweep = Sweep.new()
+                            sweep.htf_marker := line.new(bar_index - ictSettings.width + t_buffer, prev_candle.h, bar_index + ictSettings.width + t_buffer, prev_candle.h, color=sweepColor, style=line.style_solid, width=sweepWidth)
+                            sweep.is_high := true
+                            sweep.end_idx := next_period_end
+                            curr_candle.sweeps.push(sweep)
+                            if not na(candleSet.active_sweeps)
+                                candleSet.active_sweeps.push(sweep)
+                        else
+                            // Update existing bearish sweep line position
+                            if not na(existing_bearish_sweep.htf_marker)
+                                line.set_xy1(existing_bearish_sweep.htf_marker, bar_index - ictSettings.width + t_buffer, prev_candle.h)
+                                line.set_xy2(existing_bearish_sweep.htf_marker, bar_index + ictSettings.width + t_buffer, prev_candle.h)
+                            // Update end time
+                            existing_bearish_sweep.end_idx := next_period_end
+                    
+                    // Check for bullish sweep
+                    if low < prev_candle.l and close > prev_candle.l
+                        // Look for existing bullish sweep in current HTF candle
+                        Sweep existing_bullish_sweep = na
+                        if not na(curr_candle.sweeps) and curr_candle.sweeps.size() > 0
+                            for i = 0 to curr_candle.sweeps.size() - 1
+                                if i < curr_candle.sweeps.size()
+                                    sweep_check = curr_candle.sweeps.get(i)
+                                    if not na(sweep_check) and not sweep_check.is_high
+                                        existing_bullish_sweep := sweep_check
+                                        break
+                        
+                        if na(existing_bullish_sweep)
+                            // Create new bullish sweep
+                            sweep = Sweep.new()
+                            sweep.htf_marker := line.new(bar_index - ictSettings.width + t_buffer, prev_candle.l, bar_index + ictSettings.width + t_buffer, prev_candle.l, color=sweepColor, style=line.style_solid, width=sweepWidth)
+                            sweep.is_high := false
+                            sweep.end_idx := next_period_end
+                            curr_candle.sweeps.push(sweep)
+                            if not na(candleSet.active_sweeps)
+                                candleSet.active_sweeps.push(sweep)
+                        else
+                            // Update existing bullish sweep line position
+                            if not na(existing_bullish_sweep.htf_marker)
+                                line.set_xy1(existing_bullish_sweep.htf_marker, bar_index - ictSettings.width + t_buffer, prev_candle.l)
+                                line.set_xy2(existing_bullish_sweep.htf_marker, bar_index + ictSettings.width + t_buffer, prev_candle.l)
+                            // Update end time
+                            existing_bullish_sweep.end_idx := next_period_end
+        
+        candleSet
+// FIXED: CheckMidpoints with comprehensive validation
+method CheckMidpoints(CandleSet candleSet) =>
+    // Early exit if conditions not met
+    if not showMidpoints or na(candleSet) or na(candleSet.candles) or candleSet.candles.size() < 2
+        candleSet
+    else
+        // Validate candles exist
+        if candleSet.candles.size() >= 1
+            curr_candle = candleSet.candles.get(0)
+            
+            if not na(curr_candle)
+                // Initialize midpoints array if needed
+                if na(curr_candle.midpoints)
+                    curr_candle.midpoints := array.new<Midpoint>()
+                    
+                // Cache frequently used values
+                isNewHTFCandle = false
+                if not na(candleSet.settings) and not na(candleSet.settings.htf)
+                    htf_change = ta.change(time(candleSet.settings.htf))
+                    isNewHTFCandle := htf_change > 0
+                
+                if isNewHTFCandle
+                    // Clear existing midpoints with validation
+                    if not na(candleSet.active_midpoints) and candleSet.active_midpoints.size() > 0
+                        for i = candleSet.active_midpoints.size() - 1 to 0
+                            if i >= 0 and i < candleSet.active_midpoints.size()
+                                midpoint = candleSet.active_midpoints.get(i)
+                                if not na(midpoint) and not na(midpoint.htf_marker)
+                                    line.delete(midpoint.htf_marker)
+                                candleSet.active_midpoints.remove(i)
+                    
+                    if not na(curr_candle.midpoints) and curr_candle.midpoints.size() > 0
+                        for i = curr_candle.midpoints.size() - 1 to 0
+                            if i >= 0 and i < curr_candle.midpoints.size()
+                                midpoint = curr_candle.midpoints.get(i)
+                                if not na(midpoint) and not na(midpoint.htf_marker)
+                                    line.delete(midpoint.htf_marker)
+                                curr_candle.midpoints.remove(i)
+                    
+                    // Calculate and create new midpoint
+                    if candleSet.candles.size() >= 2
+                        prev_candle = candleSet.candles.get(1)
+                        if not na(prev_candle)
+                            midpoint_price = (prev_candle.h + prev_candle.l) / 2
+                            next_period_end = curr_candle.o_time + timeframe.in_seconds(candleSet.settings.htf) * 1000
+                            
+                            // Create midpoint object
+                            midpoint = Midpoint.new()
+                            midpoint.price := midpoint_price
+                            midpoint.end_idx := next_period_end
+                            
+                            // Create HTF marker
+                            t_buffer = ictSettings.offset + (ictSettings.width + ictSettings.buffer) * math.max(0, candleSet.candles.size() - 1)
+                            midpoint.htf_marker := line.new(bar_index - ictSettings.width + t_buffer, midpoint_price, bar_index + ictSettings.width + t_buffer, midpoint_price, color=midpointColor, style=line.style_dotted, width=midpointWidth)
+                            
+                            // Add to arrays
+                            curr_candle.midpoints.push(midpoint)
+                            if not na(candleSet.active_midpoints)
+                                candleSet.active_midpoints.push(midpoint)
+        
+        candleSet
+
+// FIXED: DrawOpenPriceLines with proper cleanup
+method DrawOpenPriceLines(CandleSet candleSet) =>
+    if not na(candleSet)
+        // HTF candles open price lines disabled - only interval open price lines are shown
+        // Clear any existing HTF open price lines and labels
+        if not na(candleSet.openPriceLines)
+            openLinesSize = array.size(candleSet.openPriceLines)
+            if openLinesSize > 0
+                for i = 0 to openLinesSize - 1
+                    if i < openLinesSize
+                        lineObj = array.get(candleSet.openPriceLines, i)
+                        if not na(lineObj)
+                            line.delete(lineObj)
+                array.clear(candleSet.openPriceLines)
+        
+        if not na(candleSet.openPriceLabels)
+            openLabelsSize = array.size(candleSet.openPriceLabels)
+            if openLabelsSize > 0
+                for i = 0 to openLabelsSize - 1
+                    if i < openLabelsSize
+                        labelObj = array.get(candleSet.openPriceLabels, i)
+                        if not na(labelObj)
+                            label.delete(labelObj)
+                array.clear(candleSet.openPriceLabels)
+    
+    candleSet
+
+// FIXED: Update method with validation
+method Update(CandleSet candleSet, int offset) =>
+    if not na(candleSet) and not na(candleSet.candles) and candleSet.candles.size() > 0
+        Candle candle = candleSet.candles.first()
+        if not na(candle)
+            candle.h_idx := high > candle.h ? bar_index : candle.h_idx
+            candle.h := high > candle.h ? high : candle.h
+            candle.l_idx := low < candle.l ? bar_index : candle.l_idx
+            candle.l := low < candle.l ? low : candle.l
+            candle.c := close
+            candle.c_idx := bar_index
+
+            bull = candle.c > candle.o
+
+            if not na(candle.body)
+                box.set_top(candle.body, math.max(candle.o, candle.c))
+                box.set_bottom(candle.body, math.min(candle.o, candle.c))
+                box.set_bgcolor(candle.body, bull ? ictSettings.bull_body : ictSettings.bear_body)
+                box.set_border_color(candle.body, bull ? ictSettings.bull_border : ictSettings.bear_border)
+            
+            if not na(candle.wick_up)
+                line.set_color(candle.wick_up, bull ? ictSettings.bull_wick : ictSettings.bear_wick)
+                line.set_y1(candle.wick_up, candle.h)
+                line.set_y2(candle.wick_up, math.max(candle.o, candle.c))
+            
+            if not na(candle.wick_down)
+                line.set_color(candle.wick_down, bull ? ictSettings.bull_wick : ictSettings.bear_wick)
+                line.set_y1(candle.wick_down, candle.l)
+                line.set_y2(candle.wick_down, math.min(candle.o, candle.c))
+
+            if barstate.isrealtime or barstate.islast
+                candleSet.Reorder(offset)
+                candleSet.DrawOpenPriceLines()
+    
+    candleSet
+
+// ==========================================
+// === Section 5: Symbol Info Table ===
+// ==========================================
+
+var table symbolInfoTable = table.new(position.bottom_right, 1, 2, bgcolor=color.new(#ffffff, 20), border_width=1, border_color=color.gray)
+if barstate.islast
+    // Format the date and time with current time for real-time updates
+    dateText = formatDate(timenow)
+    timeText = formatTime(timenow)
+    
+    symbolInfoText = syminfo.ticker + " | " + timeframe.period + (timeframe.isminutes ? "M" : "")
+    dateTimeText = dateText + " " + timeText
+    
+    table.cell(symbolInfoTable, 0, 0, symbolInfoText, text_color=color.rgb(0, 0, 0), text_size=size.normal, text_halign=text.align_center)
+    table.cell(symbolInfoTable, 0, 1, dateTimeText, text_color=color.rgb(0, 0, 0), text_size=size.normal, text_halign=text.align_center)
+
+// ==========================================
+// === Section 6: Interval Separator and HTF Candles Execution ===
+// ==========================================
+
+// FIXED: Update HTF settings based on current timeframe (only once)
+if barstate.isfirst
+    if higherTF == "15" or higherTF == "30"
+        htf1.settings.show := true
+        htf1.settings.htf := higherTF
+        htf1.settings.max_display := displayCount
+    else if higherTF == "60" or higherTF == "120" or higherTF == "240" or higherTF == "360" or higherTF == "540" or higherTF == "720"
+        htf2.settings.show := true
+        htf2.settings.htf := higherTF
+        htf2.settings.max_display := displayCount
+    else if higherTF == "1D"
+        htf3.settings.show := true
+        htf3.settings.htf := higherTF
+        htf3.settings.max_display := displayCount
+    else if higherTF == "1W"
+        htf4.settings.show := true
+        htf4.settings.htf := higherTF
+        htf4.settings.max_display := displayCount
+    else if higherTF == "1M" or higherTF == "3M"
+        htf5.settings.show := true
+        htf5.settings.htf := higherTF
+        htf5.settings.max_display := displayCount
+    else if higherTF == "12M"
+        htf6.settings.show := true
+        htf6.settings.htf := higherTF
+        htf6.settings.max_display := displayCount
+
+// Draw interval separators
+if ictSettings.show_intervals
+    // Get higher timeframe data
+    higherTFTime = request.security(syminfo.tickerid, higherTF, time, lookahead=barmerge.lookahead_on)
+    higherTFClose = request.security(syminfo.tickerid, higherTF, time_close, lookahead=barmerge.lookahead_on)
+    higherTFHigh = request.security(syminfo.tickerid, higherTF, high, lookahead=barmerge.lookahead_on)
+    higherTFLow = request.security(syminfo.tickerid, higherTF, low, lookahead=barmerge.lookahead_on)
+    higherTFOpen = request.security(syminfo.tickerid, higherTF, open, lookahead=barmerge.lookahead_on)
+
+    // Track period changes
+    var int currentHTFTime = na
+    var bool newHTFPeriod = false
+    var int[] historicalTimes = array.new_int()
+    var int[] historicalCloses = array.new_int()
+    var float[] historicalHighs = array.new_float()
+    var float[] historicalLows = array.new_float()
+    var float[] historicalOpens = array.new_float()
+    var line[] allLines = array.new_line()
+    var line[] openPriceLines = array.new_line()
+    var label[] openPriceLabels = array.new_label()
+    var line[] midLines = array.new_line()
+    var label[] midLabels = array.new_label()
+
+    if not na(higherTFTime) and not na(higherTFClose)
+        newHTFPeriod := higherTFTime != currentHTFTime
+        currentHTFTime := higherTFTime
+        
+        if newHTFPeriod
+            // Store new period data
+            array.unshift(historicalTimes, currentHTFTime)
+            array.unshift(historicalCloses, higherTFClose)
+            array.unshift(historicalHighs, higherTFHigh)
+            array.unshift(historicalLows, higherTFLow)
+            array.unshift(historicalOpens, higherTFOpen)
+            
+            // Maintain history length with bounds checking
+            historicalTimesSize = array.size(historicalTimes)
+            if historicalTimesSize > displayCount
+                // Use consistent array operations (FIFO)
+                if historicalTimesSize > 0
+                    array.pop(historicalTimes)
+                    array.pop(historicalCloses)
+                    array.pop(historicalHighs)
+                    array.pop(historicalLows)
+                    array.pop(historicalOpens)
+            
+            // Safely clear previous lines with error handling
+            allLinesSize = array.size(allLines)
+            if allLinesSize > 0
+                for i = 0 to allLinesSize - 1
+                    if i < array.size(allLines)
+                        lineObj = array.get(allLines, i)
+                        if not na(lineObj)
+                            line.delete(lineObj)
+                array.clear(allLines)
+            
+            // Clear previous open price lines and labels
+            if ictSettings.show_open_price
+                openLinesSize = array.size(openPriceLines)
+                if openLinesSize > 0
+                    for i = 0 to openLinesSize - 1
+                        if i < array.size(openPriceLines)
+                            lineObj = array.get(openPriceLines, i)
+                            if not na(lineObj)
+                                line.delete(lineObj)
+                    array.clear(openPriceLines)
+                
+                openLabelsSize = array.size(openPriceLabels)
+                if openLabelsSize > 0
+                    for i = 0 to openLabelsSize - 1
+                        if i < array.size(openPriceLabels)
+                            labelObj = array.get(openPriceLabels, i)
+                            if not na(labelObj)
+                                label.delete(labelObj)
+                    array.clear(openPriceLabels)
+            
+            // Clear previous mid-lines and labels
+            if ictSettings.show_mid_line
+                midLinesSize = array.size(midLines)
+                if midLinesSize > 0
+                    for i = 0 to midLinesSize - 1
+                        if i < array.size(midLines)
+                            lineObj = array.get(midLines, i)
+                            if not na(lineObj)
+                                line.delete(lineObj)
+                    array.clear(midLines)
+                
+                midLabelsSize = array.size(midLabels)
+                if midLabelsSize > 0
+                    for i = 0 to midLabelsSize - 1
+                        if i < array.size(midLabels)
+                            labelObj = array.get(midLabels, i)
+                            if not na(labelObj)
+                                label.delete(labelObj)
+                    array.clear(midLabels)
+            
+            // Draw new boxes with unified style
+            if historicalTimesSize > 0
+                for i = 0 to math.min(historicalTimesSize - 1, displayCount - 1)
+                    if i < array.size(historicalTimes)
+                        startTime = array.get(historicalTimes, i)
+                        endTime = array.get(historicalCloses, i)
+                        periodHigh = array.get(historicalHighs, i)
+                        periodLow = array.get(historicalLows, i)
+                        
+                        if not na(startTime) and not na(endTime)
+                            // Create all four borders with same style
+                            leftLine = line.new(startTime, high, startTime, low, xloc=xloc.bar_time, extend=extend.both, color=boxColor, width=lineWidth, style=getLineStyle())
+                            rightLine = line.new(endTime, high, endTime, low, xloc=xloc.bar_time, extend=extend.both, color=boxColor, width=lineWidth, style=getLineStyle())
+                            topLine = line.new(startTime, periodHigh, endTime, periodHigh, xloc=xloc.bar_time, extend=extend.none, color=boxColor, width=lineWidth, style=getLineStyle())
+                            bottomLine = line.new(startTime, periodLow, endTime, periodLow, xloc=xloc.bar_time, extend=extend.none, color=boxColor, width=lineWidth, style=getLineStyle())
+                            
+                            // Store all lines
+                            array.push(allLines, leftLine)
+                            array.push(allLines, rightLine)
+                            array.push(allLines, topLine)
+                            array.push(allLines, bottomLine)
+                            
+                            // Draw open price line only for current interval (i == 0)
+                            if ictSettings.show_open_price and i == 0
+                                periodOpen = array.get(historicalOpens, i)
+                                if not na(periodOpen)
+                                    // Create open price line from start to end of current interval
+                                    openLine = line.new(startTime, periodOpen, endTime, periodOpen, xloc=xloc.bar_time, extend=extend.none, color=ictSettings.open_price_color, width=ictSettings.open_price_width, style=getOpenPriceLineStyle())
+                                    array.push(openPriceLines, openLine)
+                                    
+                                    // Create open label if enabled (positioned exactly at interval end line)
+                                    if ictSettings.show_open_label
+                                        // Position label exactly at the interval end line with no spacing
+                                        labelTime = math.round(endTime)  // Exactly at the end line
+                                        labelSize = ictSettings.open_label_size == "tiny" ? size.tiny : ictSettings.open_label_size == "small" ? size.small : ictSettings.open_label_size == "normal" ? size.normal : size.large
+                                        openLabel = label.new(labelTime, periodOpen, "Open", color=color_transparent, textcolor=ictSettings.open_label_color, style=label.style_label_left, size=labelSize, xloc=xloc.bar_time)
+                                        array.push(openPriceLabels, openLabel)
+                                    
+                            // Draw mid-line for the most recent closed interval (i == 1), extended to current interval end
+                            if ictSettings.show_mid_line and i == 1 and array.size(historicalHighs) > 1
+                                midPeriodHigh = array.get(historicalHighs, i)
+                                midPeriodLow = array.get(historicalLows, i)
+                                if not na(midPeriodHigh) and not na(midPeriodLow)
+                                    // Calculate mid-point of high-low range
+                                    midPrice = (midPeriodHigh + midPeriodLow) / 2
+                                    
+                                    // Determine current interval end time (index 0's close time) to extend the line to
+                                    currentIntervalEnd = array.size(historicalCloses) > 0 ? array.get(historicalCloses, 0) : endTime
+                                    
+                                    // Create mid-line extended to the current interval end point
+                                    midLine = line.new(startTime, midPrice, currentIntervalEnd, midPrice, xloc=xloc.bar_time, extend=extend.none, color=ictSettings.mid_line_color, width=ictSettings.mid_line_width, style=getMidLineStyle())
+                                    array.push(midLines, midLine)
+                                    
+                                    // Create mid label if enabled at the current interval end point
+                                    if ictSettings.show_mid_label
+                                        midLabelSize = ictSettings.open_label_size == "tiny" ? size.tiny : ictSettings.open_label_size == "small" ? size.small : ictSettings.open_label_size == "normal" ? size.normal : size.large
+                                        midLabel = label.new(currentIntervalEnd, midPrice, "Mid", color=color_transparent, textcolor=ictSettings.mid_label_color, style=label.style_label_left, size=midLabelSize, xloc=xloc.bar_time)
+                                        array.push(midLabels, midLabel)
+
+// ==========================================
+// === Section 6.5: Independent Open Price Lines ===
+// ==========================================
+
+// Draw open price lines independently of interval separators
+if ictSettings.show_open_price and not ictSettings.show_intervals
+    // Get higher timeframe data for open price lines only
+    higherTFTime = request.security(syminfo.tickerid, higherTF, time, lookahead=barmerge.lookahead_on)
+    higherTFClose = request.security(syminfo.tickerid, higherTF, time_close, lookahead=barmerge.lookahead_on)
+    higherTFOpen = request.security(syminfo.tickerid, higherTF, open, lookahead=barmerge.lookahead_on)
+    
+    // Track period changes for open price lines
+    var int currentHTFTimeOpen = na
+    var bool newHTFPeriodOpen = false
+    var int[] historicalTimesOpen = array.new_int()
+    var int[] historicalClosesOpen = array.new_int()
+    var float[] historicalOpensOpen = array.new_float()
+    var line[] openPriceLinesOnly = array.new_line()
+    var label[] openPriceLabelsOnly = array.new_label()
+    
+    if not na(higherTFTime) and not na(higherTFClose)
+        newHTFPeriodOpen := higherTFTime != currentHTFTimeOpen
+        currentHTFTimeOpen := higherTFTime
+        
+        if newHTFPeriodOpen
+            // Store new period data
+            array.unshift(historicalTimesOpen, currentHTFTimeOpen)
+            array.unshift(historicalClosesOpen, higherTFClose)
+            array.unshift(historicalOpensOpen, higherTFOpen)
+            
+            // Maintain history length
+            historicalTimesOpenSize = array.size(historicalTimesOpen)
+            if historicalTimesOpenSize > displayCount
+                if historicalTimesOpenSize > 0
+                    array.pop(historicalTimesOpen)
+                    array.pop(historicalClosesOpen)
+                    array.pop(historicalOpensOpen)
+            
+            // Clear previous open price lines and labels
+            openLinesOnlySize = array.size(openPriceLinesOnly)
+            if openLinesOnlySize > 0
+                for i = 0 to openLinesOnlySize - 1
+                    if i < array.size(openPriceLinesOnly)
+                        lineObj = array.get(openPriceLinesOnly, i)
+                        if not na(lineObj)
+                            line.delete(lineObj)
+                array.clear(openPriceLinesOnly)
+            
+            openLabelsOnlySize = array.size(openPriceLabelsOnly)
+            if openLabelsOnlySize > 0
+                for i = 0 to openLabelsOnlySize - 1
+                    if i < array.size(openPriceLabelsOnly)
+                        labelObj = array.get(openPriceLabelsOnly, i)
+                        if not na(labelObj)
+                            label.delete(labelObj)
+                array.clear(openPriceLabelsOnly)
+            
+            // Draw open price lines only for current interval
+            if historicalTimesOpenSize > 0
+                for i = 0 to math.min(historicalTimesOpenSize - 1, displayCount - 1)
+                    if i < array.size(historicalTimesOpen) and i == 0
+                        startTime = array.get(historicalTimesOpen, i)
+                        endTime = array.get(historicalClosesOpen, i)
+                        periodOpen = array.get(historicalOpensOpen, i)
+                        
+                        if not na(startTime) and not na(endTime) and not na(periodOpen)
+                            // Create open price line from start to end of current interval
+                            openLine = line.new(startTime, periodOpen, endTime, periodOpen, xloc=xloc.bar_time, extend=extend.none, color=ictSettings.open_price_color, width=ictSettings.open_price_width, style=getOpenPriceLineStyle())
+                            array.push(openPriceLinesOnly, openLine)
+                            
+                            // Create open label if enabled
+                            if ictSettings.show_open_label
+                                labelTime = math.round(endTime)
+                                labelSize = ictSettings.open_label_size == "tiny" ? size.tiny : ictSettings.open_label_size == "small" ? size.small : ictSettings.open_label_size == "normal" ? size.normal : size.large
+                                openLabel = label.new(labelTime, periodOpen, "Open", color=color_transparent, textcolor=ictSettings.open_label_color, style=label.style_label_left, size=labelSize, xloc=xloc.bar_time)
+                                array.push(openPriceLabelsOnly, openLabel)
+
+// ==========================================
+// === Section 7: HTF Candles Execution ===
+// ==========================================
+
+// Process HTF Candles - Monitor calls on each calculation (unconditional)
+htf1.Monitor()
+htf2.Monitor()
+htf3.Monitor()
+htf4.Monitor()
+htf5.Monitor()
+htf6.Monitor()
+
+// Process HTF Candles
+processHTFCandles() =>
+    int offset = ictSettings.offset
+    int cnt = 0
+    
+    if ictSettings.show_htf_candles
+        if htf1.settings.show and helper.ValidTimeframe(htf1.settings.htf)
+            htf1.UpdateTime(offset)
+            htf1.Update(offset).FindImbalance().CheckSweeps().CheckMidpoints()
+            cnt := cnt + 1
+            offset := calculateHTFOffset(htf1.candles, offset)
+        
+        if htf2.settings.show and helper.ValidTimeframe(htf2.settings.htf) and cnt < helper.HTFEnabled()
+            htf2.UpdateTime(offset)
+            htf2.Update(offset).FindImbalance().CheckSweeps().CheckMidpoints()
+            cnt := cnt + 1
+            offset := calculateHTFOffset(htf2.candles, offset)
+        
+        if htf3.settings.show and helper.ValidTimeframe(htf3.settings.htf) and cnt < helper.HTFEnabled()
+            htf3.UpdateTime(offset)
+            htf3.Update(offset).FindImbalance().CheckSweeps().CheckMidpoints()
+            cnt := cnt + 1
+            offset := calculateHTFOffset(htf3.candles, offset)
+        
+        if htf4.settings.show and helper.ValidTimeframe(htf4.settings.htf) and cnt < helper.HTFEnabled()
+            htf4.UpdateTime(offset)
+            htf4.Update(offset).FindImbalance().CheckSweeps().CheckMidpoints()
+            cnt := cnt + 1
+            offset := calculateHTFOffset(htf4.candles, offset)
+        
+        if htf5.settings.show and helper.ValidTimeframe(htf5.settings.htf) and cnt < helper.HTFEnabled()
+            htf5.UpdateTime(offset)
+            htf5.Update(offset).FindImbalance().CheckSweeps().CheckMidpoints()
+            cnt := cnt + 1
+            offset := calculateHTFOffset(htf5.candles, offset)
+        
+        if htf6.settings.show and helper.ValidTimeframe(htf6.settings.htf) and cnt < helper.HTFEnabled()
+            htf6.UpdateTime(offset)
+            htf6.Update(offset).FindImbalance().CheckSweeps().CheckMidpoints()
+    
+    cnt
+
+// Execute HTF Candle processing
+processHTFCandles()
+
+// ==========================================
+// === Section 8: Professional Dashboard Display ===
+// ==========================================
+
+// Create enhanced professional mini dashboard with visual separations
+dashboardPos = dashboardPosition == "top-left" ? position.top_left : dashboardPosition == "top-right" ? position.top_right : dashboardPosition == "bottom-left" ? position.bottom_left : position.bottom_right
+var table dashboardTable = table.new(dashboardPos, 1, 5, bgcolor=dashboardBgColor, border_width=2, border_color=dashboardBorderColor, frame_width=1, frame_color=dashboardBorderColor)
+
+// Update dashboard with all information
+if showDashboard and barstate.islast
+    // Calculate remaining time for HTF candle (using original format)
+    remainingTime = calculateRemainingTimeOriginal()
+    
+    // Format dashboard content with enhanced separations
+    headerText = "🏷️ " + dashboardTitle
+    mottoText = "💎 " + dashboardMotto
+    symbolText = "📈 Symbol: " + syminfo.ticker + " | Chart: " + timeframe.period + (timeframe.isminutes ? "M" : "")
+    htfText = "🕯️ HTF: " + getHTFName(higherTF) + " | Remaining: " + remainingTime
+    dateTimeText = "📅 Date: " + formatDashboardDate(timenow) + " | Time: " + formatDashboardTime(timenow)
+    
+    // Update dashboard cells with enhanced professional styling
+    table.cell(dashboardTable, 0, 0, headerText, text_color=textColor, text_size=size.normal, text_halign=text.align_center, bgcolor=headerBgColor)
+    table.cell(dashboardTable, 0, 1, mottoText, text_color=mottoTextColor, text_size=size.small, text_halign=text.align_center, bgcolor=mottoBgColor)
+    table.cell(dashboardTable, 0, 2, symbolText, text_color=textColor, text_size=size.small, text_halign=text.align_left, bgcolor=dashboardBgColor)
+    table.cell(dashboardTable, 0, 3, htfText, text_color=textColor, text_size=size.small, text_halign=text.align_left, bgcolor=dashboardBgColor)
+    table.cell(dashboardTable, 0, 4, dateTimeText, text_color=textColor, text_size=size.small, text_halign=text.align_left, bgcolor=dashboardBgColor)
